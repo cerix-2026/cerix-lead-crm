@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import BookingFlow from "./BookingFlow.jsx";
 
 // ─── MOCK DATA ────────────────────────────────────────────
 const MOCK_LEADS = [
@@ -10,14 +11,17 @@ const MOCK_LEADS = [
   { id:"L006", name:"Sara Madsen",      email:"sara.m@gmail.com",   phone:"+45 25 12 34 56", source:"quiz",      treatment:"botox",         concern:"concern_forehead",  experience:"some_experience",status:"nurturing",  score:72, createdAt:"2025-06-13T10:15:00Z", lastEvent:"Email åbnet",      tags:["botox","some_experience"], zenotiguestId:"zen-006", events:[{t:"Quiz gennemført","d":"13. jun 10:15"},{t:"SMS sendt","d":"13. jun 10:16"},{t:"Email åbnet","d":"13. jun 14:22"}] },
 ];
 
-const MOCK_QUIZ = {
-  id:"Q001", title:"CeriX Behandlingsanbefaling",
-  questions:[
+const MOCK_QUIZZES = [
+  { id:"Q001", title:"CeriX Behandlingsanbefaling", active:true, questions:[
     { id:"q1", type:"single", text:"Hvad er dit primære ønske?", options:["Reducer rynker og fine linjer","Mere fylde og volumen","Reducer genstridige fedtdepoter","Stramme og forynge huden","Fjerne karsprængninger eller pigment"], tag:"treatment" },
     { id:"q2", type:"single", text:"Hvad bekymrer dig mest?",    options:["Ser træt eller trist ud","Rynker i panden eller rundt om øjnene","Kæbelinje eller halshud","Taber volumen i ansigtet generelt"], tag:"concern" },
     { id:"q3", type:"single", text:"Har du prøvet kosmetiske behandlinger før?", options:["Ja, jeg har erfaring med behandlinger","Ja, men kun et par gange","Nej, det bliver min første gang"], tag:"experience" },
-  ]
-};
+  ]},
+  { id:"Q002", title:"Hudtype-analyse", active:false, questions:[
+    { id:"q1", type:"single", text:"Hvordan vil du beskrive din hud?", options:["Tør","Normal","Fedtet","Kombineret"], tag:"skin_type" },
+    { id:"q2", type:"single", text:"Oplever du ofte rødme eller irritation?", options:["Ja, dagligt","Af og til","Sjældent","Aldrig"], tag:"sensitivity" },
+  ]},
+];
 
 const MOCK_FLOWS = [
   { id:"F001", name:"Botox nurture (7 dage)", trigger:"treatment=botox", active:true, steps:[
@@ -98,6 +102,7 @@ const Pill = ({ children, color=T.muted }) => (
 const NAV_ITEMS = [
   { id:"dashboard", label:"Dashboard",    icon:"◈" },
   { id:"leads",     label:"Leads",        icon:"◉" },
+  { id:"booking",   label:"Booking Test", icon:"◇" },
   { id:"quiz",      label:"Quiz Builder", icon:"◎" },
   { id:"flows",     label:"Email & SMS",  icon:"◆" },
 ];
@@ -179,6 +184,14 @@ function Dashboard({ leads, setView }) {
   const hot      = leads.filter(l=>l.status==="hot").length;
   const convRate = Math.round((booked/total)*100);
 
+  // Booking stats fra server
+  const [bookingStats, setBookingStats] = useState({ started:0, completed:0 });
+  const [bookingEnabled, setBookingEnabled] = useState(false);
+  useEffect(() => {
+    fetch("/api/stats").then(r=>r.json()).then(setBookingStats).catch(()=>{});
+    fetch("/api/settings").then(r=>r.json()).then(s=>setBookingEnabled(s.enabled)).catch(()=>{});
+  }, []);
+
   const byTreatment = ["botox","fillers","fedtfrysning","hud","laser"].map(t=>({
     t, count: leads.filter(l=>l.treatment===t).length
   })).sort((a,b)=>b.count-a.count);
@@ -198,6 +211,41 @@ function Dashboard({ leads, setView }) {
         <KpiCard label="Nye i dag"       value={newCount} sub="Afventer første kontakt"  color={T.blue} />
         <KpiCard label="Varme leads 🔥"  value={hot}      sub="Klar til opfølgning"      color="#C87C00"/>
         <KpiCard label="Bookede"         value={booked}   sub={`${convRate}% konv.-rate`} color={T.green}/>
+      </div>
+
+      {/* Booking stats */}
+      <div style={{ background:T.surf, border:`1px solid ${T.border}`, borderRadius:12,
+        padding:"20px 22px", marginBottom:24 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+          <div style={{ fontSize:13, fontWeight:600, color:T.text }}>Booking-flow statistik</div>
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            <div style={{ width:7, height:7, borderRadius:4,
+              background: bookingEnabled ? T.green : T.dim }}/>
+            <span style={{ fontSize:11, color: bookingEnabled ? T.green : T.muted }}>
+              {bookingEnabled ? "Booking aktiv" : "Booking slukket"}
+            </span>
+          </div>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16 }}>
+          <div style={{ textAlign:"center", padding:"16px 12px", background:T.surfB, borderRadius:10 }}>
+            <div style={{ fontSize:28, fontWeight:800, color:T.blue, fontFamily:"'Outfit',sans-serif" }}>
+              {bookingStats.started}
+            </div>
+            <div style={{ fontSize:11, color:T.muted, marginTop:4 }}>Startet booking</div>
+          </div>
+          <div style={{ textAlign:"center", padding:"16px 12px", background:T.surfB, borderRadius:10 }}>
+            <div style={{ fontSize:28, fontWeight:800, color:T.green, fontFamily:"'Outfit',sans-serif" }}>
+              {bookingStats.completed}
+            </div>
+            <div style={{ fontSize:11, color:T.muted, marginTop:4 }}>Gennemført</div>
+          </div>
+          <div style={{ textAlign:"center", padding:"16px 12px", background:T.surfB, borderRadius:10 }}>
+            <div style={{ fontSize:28, fontWeight:800, color:T.accent, fontFamily:"'Outfit',sans-serif" }}>
+              {bookingStats.started > 0 ? Math.round((bookingStats.completed / bookingStats.started) * 100) : 0}%
+            </div>
+            <div style={{ fontSize:11, color:T.muted, marginTop:4 }}>Konvertering</div>
+          </div>
+        </div>
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:24 }}>
@@ -493,20 +541,37 @@ function LeadsCRM({ leads, setLeads }) {
 
 // ─── QUIZ BUILDER ─────────────────────────────────────────
 function QuizBuilder() {
-  const [quiz, setQuiz]   = useState(MOCK_QUIZ);
+  const [quizzes, setQuizzes] = useState(MOCK_QUIZZES);
+  const [activeId, setActiveId] = useState(quizzes[0].id);
   const [saved, setSaved] = useState(false);
+  const quiz = quizzes.find(q=>q.id===activeId);
+
+  const updateQuiz = fn => setQuizzes(qs=>qs.map(q=>q.id===activeId?fn(q):q));
 
   const addQ = () => {
     const newQ = { id:`q${Date.now()}`, type:"single", text:"Nyt spørgsmål", options:["Mulighed 1"], tag:"custom" };
-    setQuiz(q=>({ ...q, questions:[...q.questions, newQ] }));
+    updateQuiz(q=>({ ...q, questions:[...q.questions, newQ] }));
   };
-  const removeQ = id => setQuiz(q=>({ ...q, questions:q.questions.filter(x=>x.id!==id) }));
-  const updateQ = (id, field, val) => setQuiz(q=>({
+  const removeQ = id => updateQuiz(q=>({ ...q, questions:q.questions.filter(x=>x.id!==id) }));
+  const updateQ = (id, field, val) => updateQuiz(q=>({
     ...q, questions:q.questions.map(x=>x.id===id?{...x,[field]:val}:x)
   }));
   const addOpt = id => updateQ(id, "options", [...quiz.questions.find(x=>x.id===id).options, "Ny mulighed"]);
   const updateOpt = (id,i,val) => updateQ(id,"options",quiz.questions.find(x=>x.id===id).options.map((o,j)=>j===i?val:o));
   const removeOpt = (id,i) => updateQ(id,"options",quiz.questions.find(x=>x.id===id).options.filter((_,j)=>j!==i));
+
+  const addNewQuiz = () => {
+    const newQuiz = { id:`Q${Date.now()}`, title:"Ny quiz", active:false, questions:[] };
+    setQuizzes(qs=>[...qs, newQuiz]);
+    setActiveId(newQuiz.id);
+  };
+
+  const deleteQuiz = id => {
+    if (quizzes.length <= 1) return;
+    const remaining = quizzes.filter(q=>q.id!==id);
+    setQuizzes(remaining);
+    if (activeId===id) setActiveId(remaining[0].id);
+  };
 
   const save = () => { setSaved(true); setTimeout(()=>setSaved(false),2000); };
 
@@ -517,9 +582,13 @@ function QuizBuilder() {
           <h1 style={{ fontSize:24, fontWeight:800, color:T.text, fontFamily:"'Outfit',sans-serif", marginBottom:4 }}>
             Quiz Builder
           </h1>
-          <div style={{ fontSize:13, color:T.muted }}>Byg din behandlings-quiz</div>
+          <div style={{ fontSize:13, color:T.muted }}>Byg og administrer dine behandlings-quizzer</div>
         </div>
         <div style={{ display:"flex", gap:8 }}>
+          <button onClick={addNewQuiz} style={{ padding:"9px 16px", borderRadius:8, fontSize:13, fontWeight:500,
+            cursor:"pointer", background:T.surf, color:T.text, border:`1px solid ${T.border}` }}>
+            + Ny quiz
+          </button>
           <button onClick={save} style={{ padding:"9px 20px", borderRadius:8, fontSize:13,
             fontWeight:600, cursor:"pointer", background: saved?T.green:T.accent,
             color:"#fff", border:"none", transition:"background 0.3s" }}>
@@ -528,65 +597,102 @@ function QuizBuilder() {
         </div>
       </div>
 
-      <div style={{ background:T.surf, border:`1px solid ${T.border}`, borderRadius:12,
-        padding:"18px 20px", marginBottom:16 }}>
-        <div style={{ fontSize:11, color:T.muted, textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>
-          Quiz titel
-        </div>
-        <input value={quiz.title} onChange={e=>setQuiz(q=>({...q,title:e.target.value}))}
-          style={{ width:"100%", fontSize:16, fontWeight:600, color:T.text, border:"none",
-            background:"none", outline:"none", fontFamily:"'Outfit',sans-serif" }}/>
-      </div>
-
-      {quiz.questions.map((q,qi)=>(
-        <div key={q.id} style={{ background:T.surf, border:`1px solid ${T.border}`, borderRadius:12,
-          padding:"18px 20px", marginBottom:12, position:"relative" }}>
-          <div style={{ display:"flex", gap:10, alignItems:"flex-start", marginBottom:14 }}>
-            <div style={{ width:24, height:24, borderRadius:6, background:T.accentL, display:"flex",
-              alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800,
-              color:T.accent, flexShrink:0, marginTop:2 }}>{qi+1}</div>
-            <input value={q.text} onChange={e=>updateQ(q.id,"text",e.target.value)}
-              style={{ flex:1, fontSize:14, fontWeight:600, color:T.text, border:"none",
-                background:"none", outline:"none" }}/>
-            <button onClick={()=>removeQ(q.id)} style={{ background:"none", border:"none",
-              color:T.muted, cursor:"pointer", fontSize:16, padding:"0 4px",
-              opacity:quiz.questions.length===1?0.3:1 }}>✕</button>
-          </div>
-
-          <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
-            <div style={{ fontSize:11, color:T.muted, alignSelf:"center" }}>Tag:</div>
-            <input value={q.tag} onChange={e=>updateQ(q.id,"tag",e.target.value)}
-              style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${T.border}`,
-                fontSize:12, color:T.accent, background:T.accentL, fontWeight:600, outline:"none", width:120 }}/>
-          </div>
-
-          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-            {q.options.map((opt,i)=>(
-              <div key={i} style={{ display:"flex", gap:8, alignItems:"center" }}>
-                <div style={{ width:16, height:16, borderRadius:8, border:`1.5px solid ${T.dim}`,
-                  flexShrink:0 }}/>
-                <input value={opt} onChange={e=>updateOpt(q.id,i,e.target.value)}
-                  style={{ flex:1, padding:"7px 10px", borderRadius:6, border:`1px solid ${T.border}`,
-                    fontSize:13, color:T.text, background:T.surfB, outline:"none" }}/>
-                <button onClick={()=>removeOpt(q.id,i)} style={{ background:"none", border:"none",
-                  color:T.muted, cursor:"pointer", fontSize:14, padding:"0 4px",
-                  opacity:q.options.length===1?0.3:1 }}>✕</button>
+      <div style={{ display:"grid", gridTemplateColumns:"260px 1fr", gap:16 }}>
+        {/* Quiz list */}
+        <div>
+          {quizzes.map(q=>(
+            <div key={q.id} onClick={()=>setActiveId(q.id)}
+              style={{ padding:"12px 14px", borderRadius:10, marginBottom:6, cursor:"pointer",
+                background: q.id===activeId?T.accentL:T.surf,
+                border: `1px solid ${q.id===activeId?T.accent+"44":T.border}`,
+                transition:"all 0.15s" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                <div style={{ fontSize:13, fontWeight:600,
+                  color:q.id===activeId?T.accentD:T.text, maxWidth:160,
+                  whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{q.title}</div>
+                <div onClick={e=>{e.stopPropagation();setQuizzes(qs=>qs.map(x=>x.id===q.id?{...x,active:!x.active}:x))}}
+                  style={{ width:28, height:16, borderRadius:8, cursor:"pointer",
+                    background:q.active?T.green:T.dim, position:"relative", transition:"background 0.2s" }}>
+                  <div style={{ position:"absolute", top:2, width:12, height:12, borderRadius:6,
+                    background:"#fff", transition:"left 0.2s",
+                    left:q.active?14:2 }}/>
+                </div>
               </div>
-            ))}
-            <button onClick={()=>addOpt(q.id)} style={{ alignSelf:"flex-start", marginTop:4,
-              padding:"5px 12px", borderRadius:6, fontSize:12, color:T.accent,
-              background:T.accentL, border:"none", cursor:"pointer", fontWeight:500 }}>
-              + Tilføj mulighed
-            </button>
-          </div>
+              <div style={{ fontSize:11, color:T.muted }}>{q.questions.length} spørgsmål</div>
+              {quizzes.length > 1 && (
+                <button onClick={e=>{e.stopPropagation();deleteQuiz(q.id)}}
+                  style={{ marginTop:6, fontSize:11, color:T.red, background:"none", border:"none",
+                    cursor:"pointer", padding:0, fontWeight:500 }}>
+                  Slet quiz
+                </button>
+              )}
+            </div>
+          ))}
         </div>
-      ))}
 
-      <button onClick={addQ} style={{ width:"100%", padding:"14px", borderRadius:10,
-        fontSize:13, fontWeight:600, color:T.accent, background:T.accentL,
-        border:`1.5px dashed ${T.accent}66`, cursor:"pointer" }}>
-        + Tilføj nyt spørgsmål
-      </button>
+        {/* Quiz editor */}
+        <div>
+          <div style={{ background:T.surf, border:`1px solid ${T.border}`, borderRadius:12,
+            padding:"18px 20px", marginBottom:16 }}>
+            <div style={{ fontSize:11, color:T.muted, textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>
+              Quiz titel
+            </div>
+            <input value={quiz.title} onChange={e=>updateQuiz(q=>({...q,title:e.target.value}))}
+              style={{ width:"100%", fontSize:16, fontWeight:600, color:T.text, border:"none",
+                background:"none", outline:"none", fontFamily:"'Outfit',sans-serif" }}/>
+          </div>
+
+          {quiz.questions.map((q,qi)=>(
+            <div key={q.id} style={{ background:T.surf, border:`1px solid ${T.border}`, borderRadius:12,
+              padding:"18px 20px", marginBottom:12, position:"relative" }}>
+              <div style={{ display:"flex", gap:10, alignItems:"flex-start", marginBottom:14 }}>
+                <div style={{ width:24, height:24, borderRadius:6, background:T.accentL, display:"flex",
+                  alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800,
+                  color:T.accent, flexShrink:0, marginTop:2 }}>{qi+1}</div>
+                <input value={q.text} onChange={e=>updateQ(q.id,"text",e.target.value)}
+                  style={{ flex:1, fontSize:14, fontWeight:600, color:T.text, border:"none",
+                    background:"none", outline:"none" }}/>
+                <button onClick={()=>removeQ(q.id)} style={{ background:"none", border:"none",
+                  color:T.muted, cursor:"pointer", fontSize:16, padding:"0 4px",
+                  opacity:quiz.questions.length===1?0.3:1 }}>✕</button>
+              </div>
+
+              <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+                <div style={{ fontSize:11, color:T.muted, alignSelf:"center" }}>Tag:</div>
+                <input value={q.tag} onChange={e=>updateQ(q.id,"tag",e.target.value)}
+                  style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${T.border}`,
+                    fontSize:12, color:T.accent, background:T.accentL, fontWeight:600, outline:"none", width:120 }}/>
+              </div>
+
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                {q.options.map((opt,i)=>(
+                  <div key={i} style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <div style={{ width:16, height:16, borderRadius:8, border:`1.5px solid ${T.dim}`,
+                      flexShrink:0 }}/>
+                    <input value={opt} onChange={e=>updateOpt(q.id,i,e.target.value)}
+                      style={{ flex:1, padding:"7px 10px", borderRadius:6, border:`1px solid ${T.border}`,
+                        fontSize:13, color:T.text, background:T.surfB, outline:"none" }}/>
+                    <button onClick={()=>removeOpt(q.id,i)} style={{ background:"none", border:"none",
+                      color:T.muted, cursor:"pointer", fontSize:14, padding:"0 4px",
+                      opacity:q.options.length===1?0.3:1 }}>✕</button>
+                  </div>
+                ))}
+                <button onClick={()=>addOpt(q.id)} style={{ alignSelf:"flex-start", marginTop:4,
+                  padding:"5px 12px", borderRadius:6, fontSize:12, color:T.accent,
+                  background:T.accentL, border:"none", cursor:"pointer", fontWeight:500 }}>
+                  + Tilføj mulighed
+                </button>
+              </div>
+            </div>
+          ))}
+
+          <button onClick={addQ} style={{ width:"100%", padding:"14px", borderRadius:10,
+            fontSize:13, fontWeight:600, color:T.accent, background:T.accentL,
+            border:`1.5px dashed ${T.accent}66`, cursor:"pointer" }}>
+            + Tilføj nyt spørgsmål
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -774,6 +880,267 @@ function FlowEditor() {
 }
 
 // ─── APP ROOT ─────────────────────────────────────────────
+// ─── BOOKING ADMIN (embed i CRM) ─────────────────────────
+function BookingAdmin() {
+  const [enabled, setEnabled] = useState(false);
+  const [allCenters, setAllCenters] = useState([]);
+  const [allowedIds, setAllowedIds] = useState([]);
+  const [centersLoading, setCentersLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [previewKey, setPreviewKey] = useState(0);
+
+  // Hent settings + alle klinikker ved mount
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/settings").then(r => r.json()),
+      fetch("/api/centers/all").then(r => r.json()),
+    ]).then(([settings, centersData]) => {
+      setEnabled(settings.enabled || false);
+      setAllowedIds(settings.allowedCenterIds || []);
+      setAllCenters(centersData.centers || []);
+      setCentersLoading(false);
+    }).catch(() => setCentersLoading(false));
+  }, []);
+
+  // Gem settings til server
+  const saveSettings = async (newEnabled, newAllowedIds) => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: newEnabled,
+          allowedCenterIds: newAllowedIds,
+        }),
+      });
+      const data = await res.json();
+      setEnabled(data.enabled);
+      setAllowedIds(data.allowedCenterIds);
+      // Refresh preview når settings ændres
+      setPreviewKey(k => k + 1);
+    } catch (err) {
+      console.error("Save settings failed:", err);
+    }
+    setSaving(false);
+  };
+
+  const toggleEnabled = () => {
+    const next = !enabled;
+    setEnabled(next);
+    saveSettings(next, allowedIds);
+  };
+
+  const toggleCenter = (centerId) => {
+    const next = allowedIds.includes(centerId)
+      ? allowedIds.filter(id => id !== centerId)
+      : [...allowedIds, centerId];
+    setAllowedIds(next);
+    saveSettings(enabled, next);
+  };
+
+  const selectAll = () => {
+    const all = allCenters.map(c => c.id);
+    setAllowedIds(all);
+    saveSettings(enabled, all);
+  };
+
+  const deselectAll = () => {
+    setAllowedIds([]);
+    saveSettings(enabled, []);
+  };
+
+  // Gruppér centers: active vs old/test
+  const activeCenters = allCenters.filter(c => !c.name.startsWith("Old") && !c.name.includes("Training"));
+  const testCenters = allCenters.filter(c => c.name.startsWith("Old") || c.name.includes("Training"));
+
+  const CenterCheckbox = ({ center }) => {
+    const checked = allowedIds.includes(center.id);
+    return (
+      <div onClick={() => toggleCenter(center.id)}
+        style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px",
+          borderRadius:10, cursor:"pointer", transition:"all 0.15s",
+          background: checked ? T.greenL : T.surf,
+          border: `1.5px solid ${checked ? T.green+"55" : T.border}`,
+        }}>
+        <div style={{
+          width:20, height:20, borderRadius:6, flexShrink:0,
+          display:"flex", alignItems:"center", justifyContent:"center",
+          background: checked ? T.green : "transparent",
+          border: `2px solid ${checked ? T.green : T.dim}`,
+          transition:"all 0.15s", fontSize:12, color:"#fff", fontWeight:700,
+        }}>
+          {checked && "✓"}
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:13, fontWeight:600, color:T.text,
+            whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+            {center.name}
+          </div>
+          {center.address && (
+            <div style={{ fontSize:11, color:T.muted }}>
+              {center.address}{center.zip ? `, ${center.zip}` : ""} {center.city}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ padding:"28px 32px" }}>
+      {/* Header */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
+        <div>
+          <h1 style={{ fontSize:24, fontWeight:800, color:T.text, fontFamily:"'Outfit',sans-serif",
+            letterSpacing:-0.5, marginBottom:4 }}>Booking</h1>
+          <p style={{ fontSize:13, color:T.muted }}>
+            Administrer klinikker og test booking-flowet. Forbundet til Zenoti live.
+          </p>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          {saving && <span style={{ fontSize:11, color:T.muted }}>Gemmer...</span>}
+          <span style={{ fontSize:13, fontWeight:600, color: enabled ? T.green : T.muted }}>
+            {enabled ? "Booking tændt" : "Booking slukket"}
+          </span>
+          <div onClick={toggleEnabled}
+            style={{ width:48, height:26, borderRadius:13, cursor:"pointer",
+              background: enabled ? T.green : T.dim, position:"relative", transition:"background 0.2s" }}>
+            <div style={{ position:"absolute", top:3, width:20, height:20, borderRadius:10,
+              background:"#fff", transition:"left 0.2s", boxShadow:"0 1px 3px rgba(0,0,0,0.15)",
+              left: enabled ? 25 : 3 }}/>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 420px", gap:24 }}>
+        {/* LEFT: Center selection */}
+        <div>
+          <div style={{ background:T.surf, border:`1px solid ${T.border}`, borderRadius:12, padding:20 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <div>
+                <h3 style={{ fontSize:15, fontWeight:700, color:T.text, fontFamily:"'Outfit',sans-serif" }}>
+                  Klinikker
+                </h3>
+                <div style={{ fontSize:12, color:T.muted, marginTop:2 }}>
+                  {allowedIds.length} af {allCenters.length} aktiveret
+                </div>
+              </div>
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={selectAll} style={{ padding:"5px 12px", borderRadius:6, fontSize:11,
+                  fontWeight:500, cursor:"pointer", background:T.surfB, color:T.text,
+                  border:`1px solid ${T.border}` }}>Vælg alle</button>
+                <button onClick={deselectAll} style={{ padding:"5px 12px", borderRadius:6, fontSize:11,
+                  fontWeight:500, cursor:"pointer", background:T.surfB, color:T.muted,
+                  border:`1px solid ${T.border}` }}>Fravælg alle</button>
+              </div>
+            </div>
+
+            {centersLoading ? (
+              <div style={{ textAlign:"center", padding:"30px", color:T.muted, fontSize:13 }}>
+                ⏳ Henter klinikker fra Zenoti...
+              </div>
+            ) : (
+              <>
+                {/* Active centers */}
+                {activeCenters.length > 0 && (
+                  <div style={{ marginBottom:16 }}>
+                    <div style={{ fontSize:11, color:T.muted, textTransform:"uppercase", letterSpacing:1,
+                      marginBottom:8, fontWeight:500 }}>Aktive klinikker</div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                      {activeCenters.map(c => <CenterCheckbox key={c.id} center={c} />)}
+                    </div>
+                  </div>
+                )}
+
+                {/* Test/Old centers */}
+                {testCenters.length > 0 && (
+                  <div>
+                    <div style={{ fontSize:11, color:T.muted, textTransform:"uppercase", letterSpacing:1,
+                      marginBottom:8, fontWeight:500, display:"flex", alignItems:"center", gap:6 }}>
+                      Test & arkiverede
+                      <span style={{ fontSize:9, padding:"1px 6px", borderRadius:4,
+                        background:T.accentL, color:T.accent, fontWeight:600 }}>DEV</span>
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                      {testCenters.map(c => <CenterCheckbox key={c.id} center={c} />)}
+                    </div>
+                  </div>
+                )}
+
+                {allCenters.length === 0 && (
+                  <div style={{ textAlign:"center", padding:"30px", color:T.muted, fontSize:13 }}>
+                    Kunne ikke hente klinikker. Tjek Zenoti-forbindelse.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Public URL */}
+          <div style={{ background:T.surfB, border:`1px solid ${T.border}`, borderRadius:12, padding:16, marginTop:16 }}>
+            <div style={{ fontSize:12, fontWeight:600, color:T.text, marginBottom:6 }}>Offentlig booking URL</div>
+            <code style={{ fontSize:12, color:T.accent, background:T.accentL, padding:"6px 10px",
+              borderRadius:6, display:"block", wordBreak:"break-all" }}>
+              {window.location.origin}/#/book
+            </code>
+            <p style={{ fontSize:11, color:T.muted, marginTop:6 }}>
+              Del dette link med kunder. Kun aktiverede klinikker vises.
+            </p>
+          </div>
+        </div>
+
+        {/* RIGHT: Phone preview */}
+        <div>
+          {!enabled || allowedIds.length === 0 ? (
+            <div style={{ textAlign:"center", padding:"60px 30px", background:T.surf,
+              border:`1.5px dashed ${T.border}`, borderRadius:16 }}>
+              <div style={{ fontSize:40, marginBottom:12 }}>
+                {!enabled ? "🔒" : "📋"}
+              </div>
+              <h3 style={{ fontSize:16, fontWeight:700, color:T.text, marginBottom:8,
+                fontFamily:"'Outfit',sans-serif" }}>
+                {!enabled ? "Booking er slukket" : "Vælg mindst én klinik"}
+              </h3>
+              <p style={{ fontSize:13, color:T.muted, maxWidth:280, margin:"0 auto", lineHeight:1.5 }}>
+                {!enabled
+                  ? "Tænd for booking med knappen ovenfor for at se preview."
+                  : "Aktiver en eller flere klinikker til venstre for at se booking-flowet."
+                }
+              </p>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize:12, fontWeight:600, color:T.text, marginBottom:8 }}>
+                Live preview
+              </div>
+              <div style={{
+                width:390, minHeight:680, borderRadius:32, overflow:"hidden",
+                border:`3px solid ${T.border}`, background:T.bg,
+                boxShadow:"0 8px 32px rgba(0,0,0,0.08)",
+              }}>
+                <div style={{ height:28, background:T.text, display:"flex",
+                  justifyContent:"center", alignItems:"flex-end", paddingBottom:4 }}>
+                  <div style={{ width:80, height:5, borderRadius:3, background:"#333" }}/>
+                </div>
+                <div style={{ height:650, overflowY:"auto" }}>
+                  <BookingFlow key={previewKey} />
+                </div>
+              </div>
+              <div style={{ background:T.redL, border:`1px solid ${T.red}30`, borderRadius:10,
+                padding:14, marginTop:12 }}>
+                <p style={{ fontSize:12, color:T.red, lineHeight:1.5, fontWeight:500 }}>
+                  ⚠️ OBS: Live system — gennemførte bookinger oprettes i Zenoti
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [view,  setView]  = useState("dashboard");
   const [leads, setLeads] = useState(MOCK_LEADS);
@@ -795,6 +1162,7 @@ export default function App() {
       <main style={{ flex:1, minWidth:0, overflowY:"auto", maxHeight:"100vh" }}>
         {view==="dashboard" && <Dashboard leads={leads} setView={setView}/>}
         {view==="leads"     && <LeadsCRM  leads={leads} setLeads={setLeads}/>}
+        {view==="booking"   && <BookingAdmin/>}
         {view==="quiz"      && <QuizBuilder/>}
         {view==="flows"     && <FlowEditor/>}
       </main>
