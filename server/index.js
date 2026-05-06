@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -147,15 +148,21 @@ app.get("/api/health", (req, res) => {
 
 // ─── Serve static in production ──────────────────────────
 
-const distPath = path.join(__dirname, "..", "dist");
-console.log(`[CeriX] Serving static from: ${distPath}`);
-app.use(express.static(distPath));
-app.get("/{*splat}", (req, res) => {
-  res.sendFile(path.join(distPath, "index.html"));
-});
-
+// ─── Start server FIRST ─────────────────────────────────
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`[CeriX] Server running on 0.0.0.0:${PORT}`);
   console.log(`[CeriX] Booking: ${bookingSettings.enabled ? "ON" : "OFF"}`);
   console.log(`[CeriX] Test mode: ${process.env.ZENOTI_TEST_MODE || "false"}`);
+
+  // Serve static files AFTER server is listening
+  const distPath = path.join(__dirname, "..", "dist");
+  if (fs.existsSync(distPath) && fs.existsSync(path.join(distPath, "index.html"))) {
+    app.use(express.static(distPath));
+    app.get("/{*splat}", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+    console.log(`[CeriX] Serving static from: ${distPath}`);
+  } else {
+    console.log(`[CeriX] No dist/ found, API-only mode`);
+  }
 });
