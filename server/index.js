@@ -6,9 +6,10 @@ import cors from "cors";
 import { getCenters, getAllCenters, getAvailableSlots, processBooking } from "./zenoti.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, "..", ".env") });
+try { dotenv.config({ path: path.join(__dirname, "..", ".env") }); } catch(e) { /* no .env file */ }
 const app = express();
 const PORT = process.env.PORT || process.env.SERVER_PORT || 3001;
+console.log(`[CeriX] Starting... PORT=${PORT}, NODE_ENV=${process.env.NODE_ENV || "development"}`);
 
 app.use(cors());
 app.use(express.json());
@@ -143,7 +144,8 @@ app.get("/{*path}", (req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`[CeriX] Server running on port ${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`[CeriX] Server running on 0.0.0.0:${PORT}`);
   console.log(`[CeriX] Booking: ${bookingSettings.enabled ? "ON" : "OFF"}`);
+  console.log(`[CeriX] Test mode: ${process.env.ZENOTI_TEST_MODE || "false"}`);
 });
