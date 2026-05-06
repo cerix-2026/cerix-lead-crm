@@ -3,6 +3,15 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import cors from "cors";
+
+// Catch uncaught errors
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception:", err);
+});
+process.on("unhandledRejection", (err) => {
+  console.error("[FATAL] Unhandled rejection:", err);
+});
+
 import { getCenters, getAllCenters, getAvailableSlots, processBooking } from "./zenoti.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -139,8 +148,9 @@ app.get("/api/health", (req, res) => {
 // ─── Serve static in production ──────────────────────────
 
 const distPath = path.join(__dirname, "..", "dist");
+console.log(`[CeriX] Serving static from: ${distPath}`);
 app.use(express.static(distPath));
-app.get("/{*path}", (req, res) => {
+app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
 

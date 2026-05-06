@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:20
 
 WORKDIR /app
 
@@ -12,9 +12,5 @@ RUN npm run build
 
 # Remove devDependencies after build
 RUN npm prune --omit=dev
-
-# Railway sets PORT env var
-ENV PORT=8080
-EXPOSE 8080
 
 CMD ["node", "server/index.js"]
