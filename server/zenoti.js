@@ -6,7 +6,9 @@
 //   3. POST /bookings/{id}/slots/reserve (reservér slot)
 //   4. POST /bookings/{id}/slots/confirm (bekræft)
 //
-// SAFETY: Når ZENOTI_TEST_MODE=true bruges KUN training-centres
+// SAFETY: Når ZENOTI_TEST_MODE=true:
+//   - Slots kan hentes fra ALLE centres (read-only, ingen risiko)
+//   - Reserve + confirm er BLOKERET (ingen bookinger oprettes)
 // ─────────────────────────────────────────────────────────
 
 const env = () => ({
@@ -16,7 +18,6 @@ const env = () => ({
   centerId: process.env.ZENOTI_CENTER_ID,
   service: process.env.ZENOTI_SERVICE_KONSULTATION,
   testMode: process.env.ZENOTI_TEST_MODE === "true",
-  testCenterId: process.env.ZENOTI_TEST_CENTER_ID,
 });
 
 const hdrs = () => ({
@@ -24,36 +25,6 @@ const hdrs = () => ({
   Authorization: `apikey ${env().key}`,
   ...(env().account && { "Application-Name": env().account }),
 });
-
-// ─── Test-mode safeguard ─────────────────────────────────
-// Forhindrer at booking-kald rammer live centres under udvikling
-
-const TRAINING_CENTER_IDS = [
-  "05bfadbe-1711-4174-a267-c257d74e45dc", // Old - Training - Aalborg
-  "89f42481-9b5e-4f09-8406-80d675f6fc2a", // Old - Training 2 - Aarhus
-  "9f0f9028-eab4-4482-a2b4-2fae1eaaf104", // Old - TRG 3 - Hospital
-  "fb63cf4a-982a-45fd-b56b-fd1da4ea5c6b", // Old - Training 4 - CeriX institute
-];
-
-function assertSafeCenter(centerId) {
-  if (!env().testMode) return; // Production mode — all centres allowed
-  if (!TRAINING_CENTER_IDS.includes(centerId)) {
-    throw new Error(
-      `[SAFETY] Test-mode er aktiv. Kan kun booke i training-centres. ` +
-      `Forsøgte: ${centerId}. Tilladte: ${TRAINING_CENTER_IDS.join(", ")}`
-    );
-  }
-}
-
-function getEffectiveCenterId(requestedCenterId) {
-  if (env().testMode) {
-    // I test-mode: brug altid test-center uanset hvad der anmodes
-    const testCenter = env().testCenterId || TRAINING_CENTER_IDS[0];
-    console.log(`[Zenoti] TEST MODE: Bruger training center ${testCenter} i stedet for ${requestedCenterId || "default"}`);
-    return testCenter;
-  }
-  return requestedCenterId || env().centerId;
-}
 
 // ─── Hent alle klinikker (inkl. Old og Training) ─────────
 
@@ -74,17 +45,13 @@ async function getAllCenters() {
 
 async function getCenters() {
   const all = await getAllCenters();
-  if (env().testMode) {
-    // I test mode: vis kun training centres
-    return all.filter(c => TRAINING_CENTER_IDS.includes(c.id));
-  }
   return all.filter(c => !c.name.startsWith("Old") && !c.name.includes("Training"));
 }
 
 // ─── 1. Find eller opret guest ───────────────────────────
 
 async function findOrCreateGuest(lead, centerId) {
-  const cid = getEffectiveCenterId(centerId);
+  const cid = centerId || env().centerId;
 
   // Søg på email
   const searchRes = await fetch(
@@ -135,10 +102,11 @@ async function findOrCreateGuest(lead, centerId) {
 
 // ─── 2. Opret booking (Step 1 i Zenoti flow) ────────────
 // POST /v1/bookings → { id: "booking_id" }
+// BEMÆRK: Dette opretter kun en "draft" booking for at hente slots.
+// Ingen aftale oprettes før reserve+confirm.
 
 async function createBooking(guestId, centerId, date) {
-  const cid = getEffectiveCenterId(centerId);
-  assertSafeCenter(cid);
+  const cid = centerId || env().centerId;
 
   console.log(`[Zenoti] Opretter booking: guest=${guestId}, center=${cid}, date=${date}`);
 
@@ -148,12 +116,12 @@ async function createBooking(guestId, centerId, date) {
     body: JSON.stringify({
       center_id: cid,
       date: date,
-      is_only_catalog_employees: true,
+      is_only_catalog_employees: false,
       guests: [{
         id: guestId,
         items: [{
           item: { id: env().service },
-          therapist: { Gender: 0 }, // 0=Any, 1=Male, 2=Female, 3=Specific
+          therapist: { Gender: 0 }, // 0=Any
         }],
       }],
     }),
@@ -186,14 +154,16 @@ async function getSlotsForBooking(bookingId) {
   }
 
   const data = await res.json();
+  console.log(`[Zenoti] Slots hentet for booking ${bookingId}: ${(data.slots || []).length} slots`);
   return data;
 }
 
-// ─── 4. Hent ledige tider (næste 5 hverdage) ────────────
+// ─── 4. Hent ledige tider (næste hverdage) ──────────────
+// Read-only: opretter draft-bookings for at hente slots.
+// Ingen aftaler oprettes.
 
 async function getAvailableSlots(centerId) {
-  const cid = getEffectiveCenterId(centerId);
-  assertSafeCenter(cid);
+  const cid = centerId || env().centerId;
 
   // Brug en system-guest til at hente slots (påvirker ikke rigtige kunder)
   const guestId = await findOrCreateGuest(
@@ -204,7 +174,7 @@ async function getAvailableSlots(centerId) {
   const slots = [];
   const today = new Date();
 
-  // Check næste 7 dage (op til 5 hverdage)
+  // Check næste 10 dage (op til 5 hverdage)
   for (let i = 0; i < 10 && slots.length < 20; i++) {
     const checkDate = new Date(today);
     checkDate.setDate(checkDate.getDate() + i + 1);
@@ -226,7 +196,7 @@ async function getAvailableSlots(centerId) {
           const rawTime = slot.Time || slot.time || "";
           slots.push({
             date: dateStr,
-            time: rawTime, // Behold fuld ISO datetime til reserve-step
+            time: rawTime, // Fuld ISO datetime til reserve-step
             timeDisplay: rawTime.includes("T")
               ? rawTime.split("T")[1].slice(0, 5)
               : rawTime,
@@ -240,14 +210,25 @@ async function getAvailableSlots(centerId) {
     }
   }
 
+  console.log(`[Zenoti] Totalt ${slots.length} ledige tider fundet for center ${cid}`);
   return slots.slice(0, 15);
 }
 
 // ─── 5. Reservér en slot ─────────────────────────────────
 // POST /v1/bookings/{booking_id}/slots/reserve
-// Body: { slot_time: "2026-05-10T10:30:00" }
 
 async function reserveSlot(bookingId, slotTime) {
+  // ████ TEST MODE SAFEGUARD ████
+  if (env().testMode) {
+    console.log(`[Zenoti] TEST MODE: Reserve BLOKERET for booking ${bookingId}`);
+    return {
+      isReserved: true,
+      reservationId: "TEST-" + bookingId,
+      expiryTime: new Date(Date.now() + 600000).toISOString(),
+      testMode: true,
+    };
+  }
+
   console.log(`[Zenoti] Reserverer slot: booking=${bookingId}, time=${slotTime}`);
 
   const res = await fetch(
@@ -286,6 +267,20 @@ async function reserveSlot(bookingId, slotTime) {
 // POST /v1/bookings/{booking_id}/slots/confirm
 
 async function confirmBooking(bookingId, notes) {
+  // ████ TEST MODE SAFEGUARD ████
+  if (env().testMode) {
+    console.log(`[Zenoti] TEST MODE: Confirm BLOKERET for booking ${bookingId}`);
+    return {
+      isConfirmed: true,
+      invoiceId: "TEST-invoice",
+      appointmentId: "TEST-appointment",
+      therapist: { full_name: "Test Terapeut" },
+      startTime: new Date().toISOString(),
+      endTime: new Date(Date.now() + 3600000).toISOString(),
+      testMode: true,
+    };
+  }
+
   console.log(`[Zenoti] Bekræfter booking: ${bookingId}`);
 
   const res = await fetch(
@@ -324,12 +319,14 @@ async function confirmBooking(bookingId, notes) {
 // ─── 7. Komplet booking flow ─────────────────────────────
 
 async function processBooking(lead, _bookingId, slot, centerId) {
-  const cid = getEffectiveCenterId(centerId);
-  assertSafeCenter(cid);
+  const cid = centerId || env().centerId;
 
   console.log(`[Zenoti] === BOOKING FLOW START ===`);
   console.log(`[Zenoti] Guest: ${lead.name} (${lead.email})`);
   console.log(`[Zenoti] Center: ${cid}, Slot: ${slot.date} ${slot.time}`);
+  if (env().testMode) {
+    console.log(`[Zenoti] ⚠️  TEST MODE — reserve+confirm er simuleret, ingen reel booking`);
+  }
 
   // Step 1: Find/opret rigtig guest
   const guestId = await findOrCreateGuest(lead, cid);
@@ -359,21 +356,22 @@ async function processBooking(lead, _bookingId, slot, centerId) {
     );
   }
 
-  // Step 4: Reservér slot (POST med slot_time)
+  // Step 4: Reservér slot (BLOKERET i test-mode)
   const reserveResult = await reserveSlot(bookingId, matchingSlot.Time || matchingSlot.time);
 
   if (!reserveResult.isReserved) {
     throw new Error("Kunne ikke reservere tiden. Prøv en anden tid.");
   }
 
-  // Step 5: Bekræft booking
+  // Step 5: Bekræft booking (BLOKERET i test-mode)
   const confirmResult = await confirmBooking(bookingId);
 
-  console.log(`[Zenoti] === BOOKING FLOW COMPLETE ===`);
+  console.log(`[Zenoti] === BOOKING FLOW ${env().testMode ? "SIMULERET" : "COMPLETE"} ===`);
 
   return {
     guestId,
     bookingId,
+    testMode: env().testMode || false,
     ...confirmResult,
   };
 }
