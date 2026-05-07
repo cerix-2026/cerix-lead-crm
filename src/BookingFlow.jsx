@@ -129,17 +129,21 @@ function StepTime({ centerId, selectedSlot, onSelect }) {
             {formatDate(date)}
           </div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-            {daySlots.map((slot, i) => (
-              <div key={i} onClick={() => onSelect(slot)}
-                style={{
-                  padding:"10px 16px", borderRadius:10, cursor:"pointer",
-                  background: selectedSlot?.time===slot.time && selectedSlot?.date===slot.date ? T.accentL : T.surf,
-                  border: `2px solid ${selectedSlot?.time===slot.time && selectedSlot?.date===slot.date ? T.accent : T.border}`,
-                  transition:"all 0.15s", minWidth:70, textAlign:"center",
-                }}>
-                <div style={{ fontSize:15, fontWeight:600, color:T.text }}>{slot.time}</div>
-              </div>
-            ))}
+            {daySlots.map((slot, i) => {
+              const display = slot.timeDisplay || (slot.time.includes("T") ? slot.time.split("T")[1].slice(0,5) : slot.time);
+              const isSelected = selectedSlot?.time===slot.time && selectedSlot?.date===slot.date;
+              return (
+                <div key={i} onClick={() => onSelect(slot)}
+                  style={{
+                    padding:"10px 16px", borderRadius:10, cursor:"pointer",
+                    background: isSelected ? T.accentL : T.surf,
+                    border: `2px solid ${isSelected ? T.accent : T.border}`,
+                    transition:"all 0.15s", minWidth:70, textAlign:"center",
+                  }}>
+                  <div style={{ fontSize:15, fontWeight:600, color:T.text }}>{display}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}
@@ -150,10 +154,12 @@ function StepTime({ centerId, selectedSlot, onSelect }) {
 // ─── Step 3: Oplysninger ────────────────────────────────
 
 function StepInfo({ info, onChange }) {
-  const field = (label, key, type="text", placeholder="") => (
+  const field = (label, key, type="text", placeholder="", required=true) => (
     <div style={{ marginBottom:14 }}>
       <label style={{ display:"block", fontSize:12, fontWeight:500, color:T.muted,
-        marginBottom:5, textTransform:"uppercase", letterSpacing:0.5 }}>{label}</label>
+        marginBottom:5, textTransform:"uppercase", letterSpacing:0.5 }}>
+        {label}{required && <span style={{ color:T.red, marginLeft:2 }}>*</span>}
+      </label>
       <input type={type} value={info[key]} onChange={e => onChange(key, e.target.value)}
         placeholder={placeholder}
         style={{
@@ -170,11 +176,43 @@ function StepInfo({ info, onChange }) {
       <h2 style={{ fontSize:20, fontWeight:700, color:T.text, marginBottom:4,
         fontFamily:"'Outfit',sans-serif" }}>Dine oplysninger</h2>
       <p style={{ fontSize:14, color:T.muted, marginBottom:20 }}>
-        Vi bruger dine oplysninger til at oprette bookingen
+        Udfyld dine oplysninger for at booke din gratis konsultation
       </p>
-      {field("Fulde navn", "name", "text", "Anna Jensen")}
-      {field("Email", "email", "email", "anna@email.dk")}
-      {field("Telefon", "phone", "tel", "+45 12 34 56 78")}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+        <div style={{ gridColumn:"1 / -1" }}>
+          {field("Fulde navn", "name", "text", "Anna Jensen")}
+        </div>
+        {field("Email", "email", "email", "anna@email.dk")}
+        {field("Telefon", "phone", "tel", "+45 12 34 56 78")}
+      </div>
+      <div style={{ marginBottom:14 }}>
+        <label style={{ display:"block", fontSize:12, fontWeight:500, color:T.muted,
+          marginBottom:5, textTransform:"uppercase", letterSpacing:0.5 }}>
+          Køn
+        </label>
+        <div style={{ display:"flex", gap:8 }}>
+          {[
+            { value:"female", label:"Kvinde" },
+            { value:"male", label:"Mand" },
+            { value:"other", label:"Andet" },
+          ].map(opt => (
+            <div key={opt.value} onClick={() => onChange("gender", opt.value)}
+              style={{
+                flex:1, padding:"11px 14px", borderRadius:10, cursor:"pointer",
+                textAlign:"center", fontSize:14, fontWeight:500,
+                background: info.gender===opt.value ? T.accentL : T.surf,
+                border: `1.5px solid ${info.gender===opt.value ? T.accent : T.border}`,
+                color: info.gender===opt.value ? T.accentD : T.text,
+                transition:"all 0.15s",
+              }}>
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      </div>
+      <p style={{ fontSize:11, color:T.dim, lineHeight:1.5, marginTop:8 }}>
+        Vi bruger dine oplysninger udelukkende til at oprette din booking hos CeriX.
+      </p>
     </div>
   );
 }
@@ -194,14 +232,15 @@ function StepConfirm({ center, slot, info }) {
           ["Behandling", "Gratis konsultation"],
           ["Klinik", center?.name || "—"],
           ["Dato", slot ? formatDate(slot.date) : "—"],
-          ["Tidspunkt", slot?.time || "—"],
+          ["Tidspunkt", slot ? (slot.timeDisplay || (slot.time.includes("T") ? slot.time.split("T")[1].slice(0,5) : slot.time)) : "—"],
           ["Navn", info.name],
           ["Email", info.email],
           ["Telefon", info.phone],
+          ["Køn", info.gender === "female" ? "Kvinde" : info.gender === "male" ? "Mand" : info.gender === "other" ? "Andet" : "—"],
         ].map(([label, value], i) => (
           <div key={i} style={{
             display:"flex", justifyContent:"space-between", padding:"10px 0",
-            borderBottom: i < 6 ? `1px solid ${T.border}` : "none",
+            borderBottom: i < 7 ? `1px solid ${T.border}` : "none",
           }}>
             <span style={{ fontSize:13, color:T.muted }}>{label}</span>
             <span style={{ fontSize:13, fontWeight:600, color:T.text, textAlign:"right" }}>{value}</span>
@@ -244,7 +283,7 @@ export default function BookingFlow() {
   const [centersLoading, setCentersLoading] = useState(true);
   const [selectedCenter, setSelectedCenter] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [info, setInfo] = useState({ name:"", email:"", phone:"" });
+  const [info, setInfo] = useState({ name:"", email:"", phone:"", gender:"" });
   const [booking, setBooking] = useState(false);
   const [bookError, setBookError] = useState(null);
 
@@ -283,6 +322,7 @@ export default function BookingFlow() {
           name: info.name,
           email: info.email,
           phone: info.phone,
+          gender: info.gender,
           centerId: selectedCenter.id,
           slot: selectedSlot,
         }),

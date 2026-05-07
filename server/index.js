@@ -115,7 +115,7 @@ app.post("/api/book", async (req, res) => {
     if (!bookingSettings.enabled) {
       return res.status(403).json({ error: "Booking er slukket" });
     }
-    const { name, email, phone, centerId, slot } = req.body;
+    const { name, email, phone, gender, centerId, slot } = req.body;
     if (!name || !email || !phone || !centerId || !slot) {
       return res.status(400).json({ error: "Manglende felter" });
     }
@@ -123,7 +123,7 @@ app.post("/api/book", async (req, res) => {
       return res.status(403).json({ error: "Denne klinik er ikke aktiveret for booking" });
     }
     const result = await processBooking(
-      { name, email, phone },
+      { name, email, phone, gender },
       null,
       slot,
       centerId

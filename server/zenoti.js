@@ -50,10 +50,18 @@ async function getCenters() {
 
 // ─── 1. Find eller opret guest ───────────────────────────
 
+// Zenoti gender mapping: NotSpecified=-1, Female=0, Male=1, Other=3
+function mapGender(gender) {
+  if (gender === "female") return 0;
+  if (gender === "male") return 1;
+  if (gender === "other") return 3;
+  return -1; // NotSpecified
+}
+
 async function findOrCreateGuest(lead, centerId) {
   const cid = centerId || env().centerId;
 
-  // Søg på email
+  // Søg efter eksisterende guest på email
   const searchRes = await fetch(
     `${env().base}/guests?center_id=${cid}&query=${encodeURIComponent(lead.email)}`,
     { headers: hdrs() }
@@ -64,13 +72,17 @@ async function findOrCreateGuest(lead, centerId) {
   const searchData = await searchRes.json();
 
   if (searchData.guests?.length > 0) {
-    console.log(`[Zenoti] Fundet eksisterende guest: ${searchData.guests[0].id}`);
-    return searchData.guests[0].id;
+    const existing = searchData.guests[0];
+    console.log(`[Zenoti] ✓ Eksisterende guest fundet: ${existing.id} (${existing.first_name} ${existing.last_name})`);
+    return { id: existing.id, isNew: false, name: `${existing.first_name} ${existing.last_name}` };
   }
 
-  // Opret ny gæst
+  // Opret ny gæst i Zenoti
   const [firstName, ...rest] = lead.name.trim().split(" ");
   const lastName = rest.join(" ") || "-";
+  const phoneClean = lead.phone.replace(/\D/g, "").replace(/^45/, "");
+
+  console.log(`[Zenoti] Opretter ny guest: ${firstName} ${lastName} (${lead.email})`);
 
   const createRes = await fetch(`${env().base}/guests`, {
     method: "POST",
@@ -81,9 +93,10 @@ async function findOrCreateGuest(lead, centerId) {
         first_name: firstName,
         last_name: lastName,
         email: lead.email,
+        gender: mapGender(lead.gender),
         mobile_phone: {
           country_code: 45,
-          number: lead.phone.replace(/\D/g, "").replace(/^45/, ""),
+          number: phoneClean,
         },
       },
     }),
@@ -96,8 +109,8 @@ async function findOrCreateGuest(lead, centerId) {
 
   const created = await createRes.json();
   if (!created.id) throw new Error(`Guest creation returnerede ingen id: ${JSON.stringify(created)}`);
-  console.log(`[Zenoti] Oprettet ny guest: ${created.id}`);
-  return created.id;
+  console.log(`[Zenoti] ✓ Ny guest oprettet: ${created.id}`);
+  return { id: created.id, isNew: true, name: `${firstName} ${lastName}` };
 }
 
 // ─── 2. Opret booking (Step 1 i Zenoti flow) ────────────
@@ -166,10 +179,11 @@ async function getAvailableSlots(centerId) {
   const cid = centerId || env().centerId;
 
   // Brug en system-guest til at hente slots (påvirker ikke rigtige kunder)
-  const guestId = await findOrCreateGuest(
+  const guest = await findOrCreateGuest(
     { name: "Slot Check", email: "slots@cerix.dk", phone: "+4500000000" },
     cid
   );
+  const guestId = guest.id;
 
   const slots = [];
   const today = new Date();
@@ -329,10 +343,11 @@ async function processBooking(lead, _bookingId, slot, centerId) {
   }
 
   // Step 1: Find/opret rigtig guest
-  const guestId = await findOrCreateGuest(lead, cid);
+  const guest = await findOrCreateGuest(lead, cid);
+  console.log(`[Zenoti] Guest: ${guest.name} (${guest.isNew ? "NY" : "EKSISTERENDE"})`);
 
   // Step 2: Opret booking med den rigtige guest
-  const bookingId = await createBooking(guestId, cid, slot.date);
+  const bookingId = await createBooking(guest.id, cid, slot.date);
 
   // Step 3: Hent slots og find matchende tid
   const slotData = await getSlotsForBooking(bookingId);
@@ -369,7 +384,8 @@ async function processBooking(lead, _bookingId, slot, centerId) {
   console.log(`[Zenoti] === BOOKING FLOW ${env().testMode ? "SIMULERET" : "COMPLETE"} ===`);
 
   return {
-    guestId,
+    guestId: guest.id,
+    guestIsNew: guest.isNew,
     bookingId,
     testMode: env().testMode || false,
     ...confirmResult,
